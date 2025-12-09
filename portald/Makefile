@@ -1,13 +1,13 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=portald
-PKG_VERSION:=1.0.0
+PKG_VERSION:=1.0.2
 PKG_RELEASE:=1
 
 # GitHub Release 源码包
 PKG_SOURCE:=v$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://github.com/Ass-Sniper/portald/archive/refs/tags/
-PKG_HASH:=18a6f6cc222f4f7bbd49fc1f7cf3a5f0701d494de9311044a910c7125070464c
+PKG_HASH:=skip
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 
