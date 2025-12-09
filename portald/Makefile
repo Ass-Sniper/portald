@@ -1,108 +1,105 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=portald
+PKG_VERSION:=1.0.0
 PKG_RELEASE:=1
 
-#############################################################
-# 禁用下载和校验
-PKG_SOURCE:=
-PKG_SOURCE_URL:=
-PKG_HASH:=skip
+# GitHub Release 源码包
+PKG_SOURCE:=v$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=https://github.com/Ass-Sniper/portald/archive/refs/tags/
+PKG_HASH:=18a6f6cc222f4f7bbd49fc1f7cf3a5f0701d494de9311044a910c7125070464c
 
-# ❗禁用自动解包（必须为空，而不是 true）
-PKG_UNPACK:=0
-PKG_BUILD_PARALLEL:=0
-#############################################################
+PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
 
-PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
-PKG_INSTALL:=0   # <—— 禁用默认 prepare/install，避免执行 PKG_BUILD_DIR 
+PKG_LICENSE:=MIT
+PKG_MAINTAINER:=Ass-Sniper
 
 include $(INCLUDE_DIR)/package.mk
-include $(INCLUDE_DIR)/host-build.mk  # 阻止默认 extract 函数
-
-# ------- 关键：覆盖 MTK 的 Build/Unpack （否则目录被当成程序执行） -------
-define Build/Unpack
-	# nothing
-endef
-# -------------------------------------------------------------------------
 
 define Package/portald
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=Captive Portals
-  TITLE:=High-performance captive portal daemon (iptables version)
+  TITLE:=High-performance captive portal daemon (SQLite + ipset)
   DEPENDS:=+libsqlite3 +curl +ipset +kmod-ipt-ipset
 endef
 
 define Package/portald/description
- A high-performance captive portal daemon using SQLite + ipset/iptables,
- supporting password, SMS and WeChat authentication.
+  A high-performance captive portal daemon using SQLite and iptables/ipset.
+  Supports password, SMS authentication and WeChat OAuth.
 endef
 
 
 #############################################################
-# 准备构建目录 —— 必须，否则会出现“是目录，无法执行”错误
+# 解压 GitHub tar.gz → $(PKG_BUILD_DIR)
 #############################################################
 define Build/Prepare
 	$(RM) -r $(PKG_BUILD_DIR)
 	$(MKDIR) $(PKG_BUILD_DIR)
-	$(CP) ./src/* $(PKG_BUILD_DIR)/
+	# GitHub Release 解压后会包含 portald/
+	$(TAR) -C $(PKG_BUILD_DIR) --strip-components=1 -xzf $(DL_DIR)/$(PKG_SOURCE)
 endef
 
 
 #############################################################
-# 编译主程序
+# 编译 portald（从 src 目录构建）
 #############################################################
-# 加上 curl 库，否则编译链接会失败
-TARGET_LDFLAGS += -lsqlite3 -lcurl
-
 define Build/Compile
-	$(TARGET_CC) $(TARGET_CFLAGS) \
+	$(TARGET_CC) $(TARGET_CFLAGS) -D_LARGEFILE64_SOURCE \
 		-I$(STAGING_DIR)/usr/include \
-		$(PKG_BUILD_DIR)/portald.c \
-		$(PKG_BUILD_DIR)/db.c \
-		$(PKG_BUILD_DIR)/util.c \
-		$(PKG_BUILD_DIR)/config.c \
 		-o $(PKG_BUILD_DIR)/portald \
-		$(TARGET_LDFLAGS)
+		$(PKG_BUILD_DIR)/portald/src/portald.c \
+		$(PKG_BUILD_DIR)/portald/src/db.c \
+		$(PKG_BUILD_DIR)/portald/src/util.c \
+		$(PKG_BUILD_DIR)/portald/src/config.c \
+		-lsqlite3
 endef
 
 
 #############################################################
-# 安装阶段
+# 安装所有 runtime 文件
 #############################################################
 define Package/portald/install
+
 	# 主程序
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/portald $(1)/usr/sbin/portald
 
-	# init 脚本
+	# init.d 脚本
 	$(INSTALL_DIR) $(1)/etc/init.d
-	$(INSTALL_BIN) ./files/etc/init.d/portald $(1)/etc/init.d/portald
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/portald/files/etc/init.d/portald \
+		$(1)/etc/init.d/portald
 
-	# UCI 默认配置
+	# UCI 配置
 	$(INSTALL_DIR) $(1)/etc/config
-	$(INSTALL_CONF) ./files/etc/config/portald $(1)/etc/config/portald
+	$(INSTALL_CONF) $(PKG_BUILD_DIR)/portald/files/etc/config/portald \
+		$(1)/etc/config/portald
 
-	# iptables 规则脚本
+	# Firewall 脚本
 	$(INSTALL_DIR) $(1)/usr/sbin
-	$(INSTALL_BIN) ./files/usr/sbin/portal-fw.sh $(1)/usr/sbin/portal-fw.sh
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/portald/files/usr/sbin/portal-fw.sh \
+		$(1)/usr/sbin/portal-fw.sh
 
-	# dnsmasq Portal 配置
+	# dnsmasq portal.conf
 	$(INSTALL_DIR) $(1)/etc/dnsmasq.d
-	$(INSTALL_CONF) ./files/etc/dnsmasq.d/portal.conf $(1)/etc/dnsmasq.d/portal.conf
+	$(INSTALL_CONF) $(PKG_BUILD_DIR)/portald/files/etc/dnsmasq.d/portal.conf \
+		$(1)/etc/dnsmasq.d/portal.conf
 
-	# 外部认证脚本
+	# SMS & WeChat 使用的脚本
 	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) ./files/usr/bin/send_sms.sh $(1)/usr/bin/send_sms.sh
-	$(INSTALL_BIN) ./files/usr/bin/wx_oauth.sh $(1)/usr/bin/wx_oauth.sh
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/portald/files/usr/bin/send_sms.sh \
+		$(1)/usr/bin/send_sms.sh
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/portald/files/usr/bin/wx_oauth.sh \
+		$(1)/usr/bin/wx_oauth.sh
 
 	# 数据库目录
 	$(INSTALL_DIR) $(1)/etc/portald
 
-	# Web 管理界面
+	# Web 登录页面（避免 /www/index.html 冲突，使用 /www/portal）
 	$(INSTALL_DIR) $(1)/www/portal
-	$(INSTALL_DATA) ./files/www/admin/index.html $(1)/www/portal/index.html
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/portald/files/www/admin/index.html \
+		$(1)/www/portal/index.html
 endef
+
 
 $(eval $(call BuildPackage,portald))
