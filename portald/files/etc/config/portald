@@ -1,0 +1,29 @@
+config portald 'main'
+    # WeChat OAuth
+    option wx_appid 'wx7006adbfaba13089'
+    option wx_secret '0123456789abcdef0123456789abcdef'
+    option wx_redirect 'http://portal.lan:8080/wx/callback'
+
+    # SMS
+    option sms_script '/usr/bin/send_sms.sh'
+
+    # Database
+    option db_path '/etc/portald/portal.db'
+
+    # Portal listening port
+    option port '8080'
+
+    # Session timeout (seconds)
+    option session_timeout '7200'
+
+    # Authentication method switch
+    option enable_passwd '1'
+    option enable_sms '1'
+    option enable_wechat '1'
+
+    # After login success redirect URL
+    option success_redirect 'https://www.bing.com'
+
+    # Whitelist
+    option ip_whitelist '192.168.16.119,192.168.16.168,192.168.16.248,192.168.16.128'
+    option mac_whitelist '70:4d:7b:64:3b:da,00:0c:29:16:9d:62,00:0c:29:7d:06:3e,74:cf:00:fe:1d:08'

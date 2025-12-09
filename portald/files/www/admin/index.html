@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Portal 在线管理</title>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    padding: 20px;
+}
+h2 {
+    margin-top: 30px;
+}
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 15px;
+}
+th, td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    font-size: 14px;
+    text-align: left;
+}
+th {
+    background: #eee;
+}
+button {
+    padding: 5px 10px;
+    font-size: 13px;
+}
+#history_area {
+    margin-top: 30px;
+}
+input[type="text"] {
+    padding: 4px;
+    font-size: 14px;
+    width: 200px;
+}
+</style>
+
+<script>
+// ------------------------------------------------------------
+// 工具函数
+// ------------------------------------------------------------
+function ajax(method, url, data, callback) {
+    let xhr = new XMLHttpRequest();
+    xhr.open(method, url, true);
+
+    if (method === "POST")
+        xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4)
+            callback(xhr.responseText);
+    };
+
+    xhr.send(data || null);
+}
+
+function encodeForm(obj) {
+    let arr = [];
+    for (let k in obj)
+        arr.push(encodeURIComponent(k) + "=" + encodeURIComponent(obj[k]));
+    return arr.join("&");
+}
+
+// ------------------------------------------------------------
+// 在线用户列表
+// ------------------------------------------------------------
+function loadOnline() {
+    ajax("GET", "/api/online", null, function(resp) {
+        let data;
+        try {
+            data = JSON.parse(resp);
+        } catch (e) {
+            console.error("JSON parse error", resp);
+            return;
+        }
+
+        let tbody = document.getElementById("online_tbody");
+        tbody.innerHTML = "";
+
+        data.forEach(function(u) {
+            let tr = document.createElement("tr");
+
+            tr.innerHTML =
+                "<td>"+u.ip+"</td>" +
+                "<td>"+u.mac+"</td>" +
+                "<td>"+u.user+"</td>" +
+                "<td>"+formatTime(u.login_time)+"</td>" +
+                "<td><button onclick='kick(\""+u.ip+"\",\""+u.mac+"\")'>踢下线</button></td>";
+
+            tbody.appendChild(tr);
+        });
+    });
+}
+
+function kick(ip, mac) {
+    let send = encodeForm({ ip: ip, mac: mac });
+    ajax("POST", "/api/kick", send, function(resp) {
+        alert("已踢下线: " + ip);
+        loadOnline();
+    });
+}
+
+// ------------------------------------------------------------
+// 查询历史
+// ------------------------------------------------------------
+function loadHistory() {
+    let user = document.getElementById("hist_user").value.trim();
+    if (!user) {
+        alert("请输入用户名/手机号/OpenID");
+        return;
+    }
+
+    ajax("GET", "/api/history?user=" + encodeURIComponent(user), null, function(resp) {
+        let data;
+        try {
+            data = JSON.parse(resp);
+        } catch (e) {
+            alert("无法解析服务器返回数据");
+            return;
+        }
+
+        let tbody = document.getElementById("history_tbody");
+        tbody.innerHTML = "";
+
+        data.forEach(function(u) {
+            let tr = document.createElement("tr");
+
+            tr.innerHTML =
+                "<td>"+u.ip+"</td>" +
+                "<td>"+u.mac+"</td>" +
+                "<td>"+u.user+"</td>" +
+                "<td>"+formatTime(u.login_time)+"</td>" +
+                "<td>"+(u.logout_time ? formatTime(u.logout_time) : "(在线)")+"</td>" +
+                "<td>"+u.reason+"</td>";
+
+            tbody.appendChild(tr);
+        });
+    });
+}
+
+// 格式化时间
+function formatTime(t) {
+    if (!t) return "-";
+    let d = new Date(t * 1000);
+    return d.toLocaleString();
+}
+
+// 自动刷新每 5 秒在线列表
+setInterval(loadOnline, 5000);
+
+// 页面加载完毕
+window.onload = function() {
+    loadOnline();
+};
+</script>
+
+</head>
+<body>
+
+<h1>Portal 管理后台</h1>
+
+<!-- ==========================================================
+     在线用户列表
+=========================================================== -->
+<h2>在线用户</h2>
+
+<table>
+<thead>
+<tr>
+    <th>IP 地址</th>
+    <th>MAC</th>
+    <th>用户标识</th>
+    <th>登录时间</th>
+    <th>操作</th>
+</tr>
+</thead>
+<tbody id="online_tbody"></tbody>
+</table>
+
+<!-- ==========================================================
+     历史记录
+=========================================================== -->
+<div id="history_area">
+<h2>历史记录查询</h2>
+
+用户（用户名/手机号/OpenID）：  
+<input type="text" id="hist_user">
+<button onclick="loadHistory()">查询</button>
+
+<table style="margin-top:15px;">
+<thead>
+<tr>
+    <th>IP</th>
+    <th>MAC</th>
+    <th>用户标识</th>
+    <th>登录时间</th>
+    <th>下线时间</th>
+    <th>原因</th>
+</tr>
+</thead>
+<tbody id="history_tbody"></tbody>
+</table>
+
+</div>
+
+</body>
+</html>

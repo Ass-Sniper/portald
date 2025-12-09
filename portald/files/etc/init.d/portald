@@ -1,0 +1,110 @@
+#!/bin/sh /etc/rc.common
+# OpenWrt Portal Daemon init script (procd)
+
+START=90
+STOP=10
+
+USE_PROCD=1
+PROG=/usr/sbin/portald
+CONFIG_FILE=/etc/portald/config
+FW_SCRIPT=/usr/sbin/portal-fw.sh
+
+
+############################################################
+# 读取 UCI 配置并生成 /etc/portald/config
+############################################################
+generate_config() {
+    mkdir -p /etc/portald
+
+    local port session_timeout \
+          success_redirect enable_passwd enable_sms enable_wechat \
+          wx_appid wx_secret wx_redirect db_path \
+          ip_whitelist mac_whitelist
+
+    config_load portald
+
+    config_get port             config port        "8080"
+    config_get session_timeout  config session_timeout "7200"
+    config_get success_redirect config success_redirect "http://www.baidu.com/"
+
+    config_get enable_passwd    config enable_passwd "1"
+    config_get enable_sms       config enable_sms "0"
+    config_get enable_wechat    config enable_wechat "0"
+
+    config_get wx_appid         config wx_appid ""
+    config_get wx_secret        config wx_secret ""
+    config_get wx_redirect      config wx_redirect "http://192.168.16.254:8080/wx_callback"
+
+    config_get db_path          config db_path "/etc/portald/portal.db"
+
+    config_get ip_whitelist     config ip_whitelist ""
+    config_get mac_whitelist    config mac_whitelist ""
+
+    # 若为空则写 none，更安全
+    [ -z "$ip_whitelist" ] && ip_whitelist="none"
+    [ -z "$mac_whitelist" ] && mac_whitelist="none"
+
+    cat <<EOF > $CONFIG_FILE
+port=$port
+session_timeout=$session_timeout
+success_redirect=$success_redirect
+
+enable_passwd=$enable_passwd
+enable_sms=$enable_sms
+enable_wechat=$enable_wechat
+
+wx_appid=$wx_appid
+wx_secret=$wx_secret
+wx_redirect=$wx_redirect
+
+db_path=$db_path
+
+ip_whitelist=$ip_whitelist
+mac_whitelist=$mac_whitelist
+EOF
+
+    echo "[portald] config generated at $CONFIG_FILE"
+}
+
+
+############################################################
+# 启动服务
+############################################################
+start_service() {
+    generate_config
+
+    # 启动 Portal 防火墙（iptables/ipset）
+    [ -x "$FW_SCRIPT" ] && $FW_SCRIPT start
+
+    procd_open_instance
+    procd_set_param command $PROG -c $CONFIG_FILE
+    procd_set_param respawn
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
+
+    echo "[portald] started"
+}
+
+
+############################################################
+# 停止服务
+############################################################
+stop_service() {
+    procd_kill portald  # 正确停止
+
+    [ -x "$FW_SCRIPT" ] && $FW_SCRIPT stop
+
+    echo "[portald] stopped"
+}
+
+
+############################################################
+# reload：重载配置
+############################################################
+reload_service() {
+    echo "[portald] reloading..."
+    generate_config
+
+    procd_send_signal portald HUP
+}
